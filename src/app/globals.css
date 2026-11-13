@@ -1,0 +1,71 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-fundo: #0a0e13;
+  --color-painel: #10151c;
+  --color-painel2: #171d26;
+  --color-realce: #1e2632;
+  --color-borda: #252e3a;
+  --color-texto: #d7dee8;
+  --color-suave: #8391a5;
+  --color-verde: #3ddc84;
+  --color-ambar: #f2c14e;
+  --color-vermelho: #ff6b6b;
+  --color-azul: #5aa9ff;
+  --font-mono: ui-monospace, 'JetBrains Mono', 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--color-fundo);
+  color: var(--color-texto);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  overflow: hidden;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-borda) transparent;
+}
+
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-verde);
+  outline-offset: 1px;
+}
+
+code.inline {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--color-realce);
+  border: 1px solid var(--color-borda);
+  border-radius: 4px;
+  padding: 0 4px;
+  color: #b8f5d2;
+  overflow-wrap: anywhere;
+}
+
+@keyframes surgir {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.surgir {
+  animation: surgir 0.25s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .surgir {
+    animation: none;
+  }
+}
