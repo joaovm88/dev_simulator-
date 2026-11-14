@@ -1,7 +1,12 @@
 'use client';
 
 import { useEffect } from 'react';
-import { caixaDeEntrada, useJogo } from '@/game/state/store';
+import { caixaDeEntrada, etapaAtual, useJogo, type PainelLateral } from '@/game/state/store';
+import { ReviewPane } from './ReviewPane';
+import { SimPane } from './SimPane';
+import { GitPanel } from './GitPanel';
+import { InfraPanel } from './InfraPanel';
+import { CareerPanel } from './CareerPanel';
 import { aquecerPython } from '@/game/runtime/pythonBrowser';
 import { TopBar } from './TopBar';
 import { Inbox, EmailView } from './Mail';
@@ -18,6 +23,8 @@ const ABAS: { id: AbaInferior; rotulo: string }[] = [
   { id: 'terminal', rotulo: 'Terminal' },
   { id: 'testes', rotulo: 'Testes' },
   { id: 'dados', rotulo: 'Data Inspector' },
+  { id: 'git', rotulo: 'Git' },
+  { id: 'infra', rotulo: 'Contêineres' },
 ];
 
 function BarraDeAtividades() {
@@ -26,7 +33,7 @@ function BarraDeAtividades() {
   const progresso = useJogo((s) => s.progresso);
   const lidos = useJogo((s) => s.lidos);
   const naoLidos = caixaDeEntrada({ progresso }).filter((e) => !lidos.includes(e.id) && !(e.questId && progresso[e.questId])).length;
-  const item = (id: 'inbox' | 'explorer', titulo: string, icone: React.ReactNode) => (
+  const item = (id: PainelLateral, titulo: string, icone: React.ReactNode) => (
     <button
       title={titulo}
       aria-label={titulo}
@@ -50,6 +57,11 @@ function BarraDeAtividades() {
         'Explorer — Arquivos do projeto',
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 4h6l2 3h8v13H4z" /></svg>,
       )}
+      {item(
+        'carreira',
+        'Carreira — trilha e conquistas',
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M7 4h10v5a5 5 0 0 1-10 0zM7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3M12 14v4M8 20h8" /></svg>,
+      )}
     </nav>
   );
 }
@@ -60,6 +72,7 @@ export default function Workspace() {
   const abaInferior = useJogo((s) => s.abaInferior);
   const setAbaInferior = useJogo((s) => s.setAbaInferior);
   const falhas = useJogo((s) => s.resultado?.testes.filter((t) => !t.ok).length ?? 0);
+  const atividade = useJogo((s) => (s.verEtapa ? (etapaAtual(s)?.etapa.tipo ?? null) : null));
 
   useEffect(() => {
     // Sobe o Pyodide em segundo plano para o primeiro "Rodar testes" ser rápido.
@@ -71,10 +84,10 @@ export default function Workspace() {
       <TopBar />
       <div className="flex min-h-0 flex-1">
         <BarraDeAtividades />
-        <aside className="w-64 shrink-0 overflow-y-auto border-r border-borda bg-painel">{painel === 'inbox' ? <Inbox /> : <Explorer />}</aside>
+        <aside className="w-64 shrink-0 overflow-y-auto border-r border-borda bg-painel">{painel === 'inbox' ? <Inbox /> : painel === 'carreira' ? <CareerPanel /> : <Explorer />}</aside>
 
         <main className="flex min-w-0 flex-1 flex-col">
-          <section className="min-h-0 flex-1">{emailAberto ? <EmailView /> : <EditorPane />}</section>
+          <section className="min-h-0 flex-1">{emailAberto ? <EmailView /> : atividade === 'SIMULACAO' ? <SimPane /> : atividade === 'REVISAO_CODIGO' ? <ReviewPane /> : <EditorPane />}</section>
 
           <section className="flex h-[38%] min-h-[180px] flex-col border-t border-borda bg-fundo">
             <div role="tablist" className="flex shrink-0 items-center gap-1 border-b border-borda bg-painel px-2">
@@ -98,6 +111,8 @@ export default function Workspace() {
               </div>
               {abaInferior === 'testes' && <div className="absolute inset-0 overflow-auto"><TestResults /></div>}
               {abaInferior === 'dados' && <div className="absolute inset-0"><DataInspector /></div>}
+              {abaInferior === 'git' && <div className="absolute inset-0"><GitPanel /></div>}
+              {abaInferior === 'infra' && <div className="absolute inset-0"><InfraPanel /></div>}
             </div>
           </section>
         </main>

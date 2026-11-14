@@ -2,7 +2,8 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { QUESTS, questPorId, questsDoNivel } from '../quests';
+import { QUESTS, arquivoDaEtapa, questPorId, questsDoNivel } from '../quests';
+import { chaveLacuna, idsDoModelo, lacunasDa, montar } from '../lacunas';
 import { NIVEIS, ROTULO_NIVEL, type Etapa, type Nivel, type Quest, type ResultadoValidacao } from '../types';
 import { estadoInicialShell, type EventoShell, type ShellEstado } from '../shell/shell';
 import { comandosPendentes, novoBancoSQL, semWhere, validarEtapa, avaliarRegras } from '../validators';
@@ -30,7 +31,16 @@ export interface Progresso {
   dicasTotal: number;
   /** Comandos bem-sucedidos desde o início da etapa atual. */
   comandos: string[];
+  /** Escolhas do modo guiado na etapa atual: chaveLacuna -> texto da opção. */
+  lacunas: Record<string, string>;
+  /** O jogador trocou as lacunas pelo editor livre nesta etapa (vale bônus). */
+  modoLivre: boolean;
+  /** Linhas marcadas na revisão de código da etapa atual. */
+  marcadas: number[];
+  bonusXP: number;
 }
+
+export const BONUS_MODO_LIVRE = 10;
 
 export interface Email {
   id: string;
@@ -41,7 +51,8 @@ export interface Email {
   questId?: string;
 }
 
-export type AbaInferior = 'terminal' | 'testes' | 'dados';
+export type AbaInferior = 'terminal' | 'testes' | 'dados' | 'git' | 'infra';
+export type PainelLateral = 'inbox' | 'explorer' | 'carreira';
 
 interface Estado {
   progresso: Record<string, Progresso>;
@@ -53,14 +64,20 @@ interface Estado {
   abas: string[];
   arquivoAtivo: string | null;
   emailAberto: string | null;
-  painelLateral: 'inbox' | 'explorer';
+  painelLateral: PainelLateral;
 
   // transitório (não persistido)
+  /** O painel central mostra a atividade da etapa (revisão/simulador) em vez do editor. */
+  verEtapa: boolean;
   resultado: ResultadoValidacao | null;
   validando: boolean;
   abaInferior: AbaInferior;
   dadosVersao: number;
   consultaSQL: { colunas: string[]; linhas: unknown[][] } | null;
+  /** Lacunas apontadas como incorretas na última verificação. */
+  lacunasErradas: string[];
+  /** Linhas marcadas sem necessidade na última revisão enviada. */
+  revisaoFalsos: number[];
   celebracao: { questId: string; promocao: Nivel | 'FIM' | null } | null;
 
   abrirEmail(id: string): void;
@@ -73,10 +90,17 @@ interface Estado {
   responderDecisao(opcaoId: string): void;
   validar(): Promise<void>;
   pedirDica(): void;
+  escolherLacuna(chave: string, texto: string): void;
+  alternarModoLivre(): void;
+  alternarLinha(linha: number): void;
+  enviarRevisao(): void;
+  /** Resultado de uma rodada do simulador da etapa atual. */
+  relatarSimulacao(aprovado: boolean, resumo: string, diagnostico: string): void;
   registrarComandos(comandos: string[], evento?: EventoShell): void;
   salvarShell(estado: ShellEstado): void;
   executarArquivoDeDados(caminho: string): Promise<void>;
-  setPainelLateral(p: 'inbox' | 'explorer'): void;
+  setPainelLateral(p: PainelLateral): void;
+  setVerEtapa(v: boolean): void;
   setAbaInferior(a: AbaInferior): void;
   fecharCelebracao(): void;
   reiniciarMissao(questId: string): void;
@@ -86,7 +110,8 @@ interface Estado {
 let seqMsg = Date.now();
 const msg = (de: Mensagem['de'], texto: string, tom?: Mensagem['tom']): Mensagem => ({ id: ++seqMsg, de, texto, tom });
 
-const progressoInicial = (): Progresso => ({ etapa: 0, concluida: false, errosDecisao: 0, tentadas: [], dicas: 0, dicasTotal: 0, comandos: [] });
+const porEtapa = () => ({ tentadas: [], dicas: 0, comandos: [], lacunas: {}, modoLivre: false, marcadas: [] });
+const progressoInicial = (): Progresso => ({ etapa: 0, concluida: false, errosDecisao: 0, dicasTotal: 0, bonusXP: 0, ...porEtapa() });
 
 // ---------- Seletores ----------
 
@@ -106,7 +131,8 @@ export function nivelAtual(s: Pick<Estado, 'progresso'>): Nivel {
 
 export const trilhaConcluida = (s: Pick<Estado, 'progresso'>) => QUESTS.every((q) => questConcluida(s, q._id));
 
-export const xpTotal = (s: Pick<Estado, 'progresso'>) => QUESTS.filter((q) => questConcluida(s, q._id)).reduce((t, q) => t + q.recompensaXP, 0);
+export const xpTotal = (s: Pick<Estado, 'progresso'>) =>
+  QUESTS.reduce((t, q) => t + (questConcluida(s, q._id) ? q.recompensaXP : 0) + (s.progresso[q._id]?.bonusXP ?? 0), 0);
 
 export function estrelas(p: Progresso | undefined): number {
   if (!p?.concluida) return 0;
@@ -152,9 +178,6 @@ export const etapaAtual = (s: Pick<Estado, 'progresso' | 'questAtivaId'>): { que
   return { quest, etapa: quest.etapas[progresso.etapa], progresso };
 };
 
-const arquivoDaEtapa = (e: Etapa): string | undefined =>
-  'arquivo' in e ? e.arquivo : e.tipo === 'VALIDACAO_ESTATICA' ? e.regras[0]?.arquivo : undefined;
-
 // ---------- Store ----------
 
 export const useJogo = create<Estado>()(
@@ -164,18 +187,22 @@ export const useJogo = create<Estado>()(
       const avancar = (questId: string) => {
         const s = get();
         const quest = questPorId(questId)!;
-        const p = s.progresso[questId];
+        let p = s.progresso[questId];
         const proxima = p.etapa + 1;
         const chat = [...(s.chat[questId] ?? [])];
+        if (p.modoLivre && lacunasDa(quest.etapas[p.etapa]).length > 0) {
+          p = { ...p, bonusXP: p.bonusXP + BONUS_MODO_LIVRE };
+          chat.push(msg('sistema', `Modo "escrever do zero": +${BONUS_MODO_LIVRE} XP de bônus`, 'ok'));
+        }
 
         if (proxima >= quest.etapas.length) {
-          const final: Progresso = { ...p, concluida: true, tentadas: [], comandos: [] };
+          const final: Progresso = { ...p, concluida: true, ...porEtapa() };
           const novoProgresso = { ...s.progresso, [questId]: final };
           const n = estrelas(final);
           chat.push(msg('sistema', `Missão concluída: ${quest.codigo} — ${quest.titulo} · +${quest.recompensaXP} XP · ${'★'.repeat(n)}${'☆'.repeat(3 - n)}`, 'ok'));
           chat.push(msg('ia', quest.boss ? 'Projeto integrador aprovado! Confira a sua caixa de entrada: tem novidade do RH.' : 'Excelente trabalho! Já chegou uma nova demanda na sua caixa de entrada.', 'ok'));
           const promocao: Nivel | 'FIM' | null = quest.boss ? (NIVEIS[NIVEIS.indexOf(quest.nivelCarreira) + 1] ?? 'FIM') : null;
-          set({ progresso: novoProgresso, chat: { ...s.chat, [questId]: chat }, celebracao: { questId, promocao }, resultado: null });
+          set({ progresso: novoProgresso, chat: { ...s.chat, [questId]: chat }, celebracao: { questId, promocao }, resultado: null, lacunasErradas: [], revisaoFalsos: [] });
           return;
         }
 
@@ -184,9 +211,12 @@ export const useJogo = create<Estado>()(
         const arquivo = arquivoDaEtapa(etapa);
         const abre = arquivo && s.arquivos[questId]?.[arquivo] !== undefined ? arquivo : null;
         set({
-          progresso: { ...s.progresso, [questId]: { ...p, etapa: proxima, tentadas: [], dicas: 0, comandos: [] } },
+          progresso: { ...s.progresso, [questId]: { ...p, etapa: proxima, ...porEtapa() } },
           chat: { ...s.chat, [questId]: chat },
           resultado: null,
+          lacunasErradas: [],
+          revisaoFalsos: [],
+          verEtapa: true,
           abaInferior: etapa.tipo === 'COMANDO_TERMINAL' ? 'terminal' : s.abaInferior,
           ...(abre ? { arquivoAtivo: abre, abas: s.abas.includes(abre) ? s.abas : [...s.abas, abre], emailAberto: null, painelLateral: 'explorer' as const } : {}),
         });
@@ -206,11 +236,14 @@ export const useJogo = create<Estado>()(
         arquivoAtivo: null,
         emailAberto: EMAIL_BOAS_VINDAS.id,
         painelLateral: 'inbox',
+        verEtapa: true,
         resultado: null,
         validando: false,
         abaInferior: 'terminal',
         dadosVersao: 0,
         consultaSQL: null,
+        lacunasErradas: [],
+        revisaoFalsos: [],
         celebracao: null,
 
         abrirEmail: (id) => set((s) => ({ emailAberto: id, lidos: s.lidos.includes(id) ? s.lidos : [...s.lidos, id] })),
@@ -234,6 +267,7 @@ export const useJogo = create<Estado>()(
             arquivoAtivo: aberto,
             emailAberto: null,
             painelLateral: 'explorer',
+            verEtapa: true,
             resultado: null,
             consultaSQL: null,
             abaInferior: 'terminal',
@@ -241,7 +275,7 @@ export const useJogo = create<Estado>()(
         },
 
         abrirArquivo: (caminho) =>
-          set((s) => ({ arquivoAtivo: caminho, emailAberto: null, abas: s.abas.includes(caminho) ? s.abas : [...s.abas, caminho] })),
+          set((s) => ({ arquivoAtivo: caminho, emailAberto: null, verEtapa: false, abas: s.abas.includes(caminho) ? s.abas : [...s.abas, caminho] })),
 
         fecharAba: (caminho) =>
           set((s) => {
@@ -291,8 +325,25 @@ export const useJogo = create<Estado>()(
 
         validar: async () => {
           const atual = etapaAtual(get());
-          if (!atual || atual.etapa.tipo === 'DECISAO_ARQUITETURAL' || get().validando) return;
+          if (!atual || get().validando) return;
           const { quest, etapa, progresso } = atual;
+          if (etapa.tipo === 'DECISAO_ARQUITETURAL' || etapa.tipo === 'SIMULACAO') return;
+          if (etapa.tipo === 'REVISAO_CODIGO') return get().enviarRevisao();
+
+          // Modo guiado: monta os arquivos a partir das lacunas antes de validar.
+          const modelos = progresso.modoLivre ? [] : lacunasDa(etapa);
+          const emBranco = modelos.flatMap((l) => idsDoModelo(l).filter((id) => progresso.lacunas[chaveLacuna(l.arquivo, id)] === undefined));
+          if (emBranco.length > 0) {
+            dizer(quest._id, msg('ia', `Ainda ${emBranco.length === 1 ? 'há 1 lacuna' : `há ${emBranco.length} lacunas`} em branco. Clique em cada uma para ver o que as opções fazem e escolha a que resolve.`, 'info'));
+            return;
+          }
+          for (const l of modelos) get().editarArquivo(l.arquivo, montar(l, progresso.lacunas));
+          const erradas = modelos.flatMap((l) =>
+            Object.entries(l.slots)
+              .filter(([id, ops]) => !ops.find((o) => o.texto === progresso.lacunas[chaveLacuna(l.arquivo, id)])?.correta)
+              .map(([id, ops]) => ({ chave: chaveLacuna(l.arquivo, id), opcao: ops.find((o) => o.texto === progresso.lacunas[chaveLacuna(l.arquivo, id)])! })),
+          );
+
           set({ validando: true });
           try {
             const s = get();
@@ -304,9 +355,26 @@ export const useJogo = create<Estado>()(
             const falhas = resultado.testes.filter((t) => !t.ok);
             const total = resultado.testes.length;
             set({ resultado, abaInferior: etapa.tipo === 'COMANDO_TERMINAL' ? get().abaInferior : 'testes' });
-            if (resultado.ok) {
+            if (resultado.ok && erradas.length === 0) {
               dizer(quest._id, msg('sistema', `✓ ${total} de ${total} verificações passaram`, 'ok'));
               avancar(quest._id);
+              return;
+            }
+            if (erradas.length > 0) {
+              // Mostra a consequência real da escolha: a explicação da sintaxe + o que a execução acusou.
+              const { opcao } = erradas[0];
+              const execucao = falhas[0]
+                ? `\n\nAo executar: **${falhas[0].nome}** — ${(falhas[0].detalhe ?? 'falhou').replace(/[.\s]+$/, '')}.`
+                : '\n\nOs testes até passaram, mas por acaso: essa não é a construção certa para o que queremos.';
+              set((st) => ({
+                lacunasErradas: erradas.map((e) => e.chave),
+                progresso: { ...st.progresso, [quest._id]: { ...st.progresso[quest._id], errosDecisao: st.progresso[quest._id].errosDecisao + 1 } },
+              }));
+              dizer(
+                quest._id,
+                msg('sistema', `✗ ${erradas.length === 1 ? '1 lacuna para rever' : `${erradas.length} lacunas para rever`} (marcadas em vermelho)`, 'erro'),
+                msg('ia', `Veja a lacuna com \`${opcao.texto || '(nada)'}\`: ${opcao.explica}${execucao}`, 'erro'),
+              );
               return;
             }
             const primeira = falhas[0];
@@ -333,6 +401,68 @@ export const useJogo = create<Estado>()(
           set((s) => ({
             progresso: { ...s.progresso, [quest._id]: { ...progresso, dicas: progresso.dicas + 1, dicasTotal: progresso.dicasTotal + 1 } },
           }));
+        },
+
+        escolherLacuna: (chave, texto) => {
+          const atual = etapaAtual(get());
+          if (!atual) return;
+          set((s) => ({
+            lacunasErradas: s.lacunasErradas.filter((c) => c !== chave),
+            progresso: { ...s.progresso, [atual.quest._id]: { ...atual.progresso, lacunas: { ...atual.progresso.lacunas, [chave]: texto } } },
+          }));
+        },
+
+        alternarModoLivre: () => {
+          const atual = etapaAtual(get());
+          if (!atual || lacunasDa(atual.etapa).length === 0) return;
+          const livre = !atual.progresso.modoLivre;
+          set((s) => ({ progresso: { ...s.progresso, [atual.quest._id]: { ...atual.progresso, modoLivre: livre } }, lacunasErradas: [], resultado: null }));
+          if (livre) dizer(atual.quest._id, msg('ia', `Modo **escrever do zero** ativado: o editor é todo seu, sem lacunas. Passando nos testes assim, você ganha +${BONUS_MODO_LIVRE} XP de bônus. Passe o mouse sobre qualquer palavra-chave para eu explicar a sintaxe.`, 'info'));
+        },
+
+        alternarLinha: (linha) => {
+          const atual = etapaAtual(get());
+          if (!atual || atual.etapa.tipo !== 'REVISAO_CODIGO') return;
+          const m = atual.progresso.marcadas;
+          const marcadas = m.includes(linha) ? m.filter((x) => x !== linha) : [...m, linha].sort((a, b) => a - b);
+          set((s) => ({ revisaoFalsos: [], progresso: { ...s.progresso, [atual.quest._id]: { ...atual.progresso, marcadas } } }));
+        },
+
+        enviarRevisao: () => {
+          const atual = etapaAtual(get());
+          if (!atual || atual.etapa.tipo !== 'REVISAO_CODIGO') return;
+          const { quest, etapa, progresso } = atual;
+          const certas = etapa.problemas.map((p) => p.linha);
+          const achou = progresso.marcadas.filter((l) => certas.includes(l));
+          const falsos = progresso.marcadas.filter((l) => !certas.includes(l));
+          if (progresso.marcadas.length === 0) {
+            dizer(quest._id, msg('ia', 'Clique nas linhas do código que têm problema para marcá-las e depois envie a revisão.', 'info'));
+            return;
+          }
+          if (achou.length === certas.length && falsos.length === 0) {
+            dizer(
+              quest._id,
+              msg('sistema', `✓ Revisão aprovada: ${certas.length} de ${certas.length} problemas encontrados`, 'ok'),
+              msg('ia', `Olho clínico! O que você encontrou:\n\n${etapa.problemas.map((p) => `**Linha ${p.linha}** — ${p.explica}`).join('\n\n')}`, 'ok'),
+            );
+            avancar(quest._id);
+            return;
+          }
+          set((s) => ({
+            revisaoFalsos: falsos,
+            progresso: { ...s.progresso, [quest._id]: { ...progresso, errosDecisao: progresso.errosDecisao + 1 } },
+          }));
+          const partes = [`Você encontrou ${achou.length} de ${certas.length} problemas.`];
+          if (falsos.length) partes.push(`${falsos.length === 1 ? `A linha ${falsos[0]} está correta` : `As linhas ${falsos.join(', ')} estão corretas`}: desmarque.`);
+          if (achou.length < certas.length) partes.push('Ainda há linha problemática sem marcar.');
+          dizer(quest._id, msg('ia', partes.join(' '), 'erro'));
+        },
+
+        relatarSimulacao: (aprovado, resumo, diagnostico) => {
+          const atual = etapaAtual(get());
+          if (!atual || atual.etapa.tipo !== 'SIMULACAO') return;
+          dizer(atual.quest._id, msg('sistema', `${aprovado ? '✓' : '✗'} ${resumo}`, aprovado ? 'ok' : 'erro'), msg('ia', diagnostico, aprovado ? 'ok' : 'erro'));
+          if (aprovado) avancar(atual.quest._id);
         },
 
         registrarComandos: (comandos, evento) => {
@@ -396,6 +526,7 @@ export const useJogo = create<Estado>()(
         },
 
         setPainelLateral: (painelLateral) => set({ painelLateral }),
+        setVerEtapa: (verEtapa) => set(verEtapa ? { verEtapa, emailAberto: null } : { verEtapa }),
         setAbaInferior: (abaInferior) => set({ abaInferior }),
         fecharCelebracao: () => set({ celebracao: null, painelLateral: 'inbox' }),
 
@@ -433,7 +564,7 @@ export const useJogo = create<Estado>()(
       };
     },
     {
-      name: 'devos-save-v1',
+      name: 'devos-save-v2',
       partialize: (s) => ({
         progresso: s.progresso,
         arquivos: s.arquivos,

@@ -232,6 +232,9 @@ export async function validarEtapa(etapa: Etapa, ctx: ContextoValidacao, rt: Run
       break;
     }
     case 'DECISAO_ARQUITETURAL':
+    case 'REVISAO_CODIGO':
+    case 'SIMULACAO':
+      // Resolvidas pela interação do jogador (ver store).
       testes = [];
       break;
   }

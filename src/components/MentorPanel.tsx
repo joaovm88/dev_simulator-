@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { QUESTS, questPorId } from '@/game/quests';
+import { QUESTS, arquivoDaEtapa, questPorId } from '@/game/quests';
+import { lacunasDa } from '@/game/lacunas';
 import { etapaAtual, questLiberada, useJogo, type Mensagem } from '@/game/state/store';
 import { comandosPendentes } from '@/game/validators';
 import type { Etapa } from '@/game/types';
@@ -14,6 +15,8 @@ const ROTULO_ETAPA: Record<Etapa['tipo'], string> = {
   IMPLEMENTACAO_SQL: 'SQL',
   IMPLEMENTACAO_MONGO: 'MongoDB',
   VALIDACAO_ESTATICA: 'Code Review',
+  REVISAO_CODIGO: 'Revisão',
+  SIMULACAO: 'Simulação',
 };
 
 function Bolha({ m }: { m: Mensagem }) {
@@ -40,7 +43,10 @@ function Acoes() {
   const progresso = useJogo((s) => s.progresso);
   const questAtivaId = useJogo((s) => s.questAtivaId);
   const validando = useJogo((s) => s.validando);
-  const { responderDecisao, validar, pedirDica, abrirArquivo, abrirEmail, setPainelLateral, setAbaInferior } = useJogo.getState();
+  const verEtapa = useJogo((s) => s.verEtapa && !s.emailAberto);
+  const emailAberto = useJogo((s) => s.emailAberto);
+  const arquivoAtivo = useJogo((s) => s.arquivoAtivo);
+  const { responderDecisao, validar, pedirDica, abrirArquivo, abrirEmail, setPainelLateral, setAbaInferior, enviarRevisao, setVerEtapa } = useJogo.getState();
   const atual = etapaAtual({ progresso, questAtivaId });
   const quest = questPorId(questAtivaId);
 
@@ -133,12 +139,33 @@ function Acoes() {
         </>
       )}
 
-      {etapa.tipo !== 'DECISAO_ARQUITETURAL' && etapa.tipo !== 'COMANDO_TERMINAL' && (
+      {etapa.tipo === 'REVISAO_CODIGO' && (
+        <div className="flex gap-2">
+          <button
+            onClick={() => (verEtapa ? enviarRevisao() : setVerEtapa(true))}
+            className="flex-1 rounded-md bg-verde px-3 py-2 text-[12.5px] font-semibold text-black hover:brightness-110"
+          >
+            {verEtapa ? `Enviar revisão (${p.marcadas.length} marcada${p.marcadas.length === 1 ? '' : 's'})` : 'Abrir o code review'}
+          </button>
+          {botaoDica}
+        </div>
+      )}
+
+      {etapa.tipo === 'SIMULACAO' && (
+        <div className="flex gap-2">
+          <button onClick={() => setVerEtapa(true)} className="flex-1 rounded-md border border-vermelho/50 px-3 py-2 text-[12.5px] font-semibold text-vermelho hover:bg-vermelho/10">
+            Abrir a Sala de Guerra
+          </button>
+          {botaoDica}
+        </div>
+      )}
+
+      {(etapa.tipo === 'IMPLEMENTACAO_CODIGO' || etapa.tipo === 'IMPLEMENTACAO_SQL' || etapa.tipo === 'IMPLEMENTACAO_MONGO' || etapa.tipo === 'VALIDACAO_ESTATICA') && (
         <div className="flex gap-2">
           <button
             onClick={() => {
-              const arquivo = 'arquivo' in etapa ? etapa.arquivo : etapa.regras[0]?.arquivo;
-              if (arquivo) abrirArquivo(arquivo);
+              const arquivo = arquivoDaEtapa(etapa);
+              if (arquivo && (emailAberto || !lacunasDa(etapa).some((l) => l.arquivo === arquivoAtivo))) abrirArquivo(arquivo);
               void validar();
             }}
             disabled={validando}

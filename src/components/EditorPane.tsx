@@ -5,6 +5,12 @@ import Editor, { loader, type Monaco, type OnMount } from '@monaco-editor/react'
 import { etapaAtual, useJogo } from '@/game/state/store';
 import { pedirComando } from '@/game/runtime/bus';
 import { executavel, linguagemDe } from './ui';
+import { ClozePane } from './ClozePane';
+import { lacunasDa } from '@/game/lacunas';
+import { GLOSSARIO, explicar } from '@/game/glossario';
+import { BONUS_MODO_LIVRE } from '@/game/state/store';
+
+let lenteRegistrada = false;
 
 // Monaco servido de /public (copiado no postinstall), sem CDN.
 loader.config({ paths: { vs: '/monaco/vs' } });
@@ -23,6 +29,18 @@ function configurarMonaco(monaco: Monaco) {
       'editor.selectionBackground': '#1f4a35',
     },
   });
+  // Lente de sintaxe: passar o mouse sobre uma palavra-chave explica o que ela faz.
+  if (!lenteRegistrada) {
+    lenteRegistrada = true;
+    for (const linguagem of Object.keys(GLOSSARIO)) {
+      monaco.languages.registerHoverProvider(linguagem, {
+        provideHover(modelo: { getLineContent(n: number): string }, posicao: { lineNumber: number; column: number }) {
+          const e = explicar(linguagem, modelo.getLineContent(posicao.lineNumber), posicao.column);
+          return e ? { contents: [{ value: `**\`${e.termo}\`** · dev_IA` }, { value: e.texto }] } : null;
+        },
+      });
+    }
+  }
   // Os arquivos .ts/.tsx das missões não têm node_modules: desliga a checagem
   // semântica para não sublinhar imports de "react" em vermelho.
   try {
@@ -43,6 +61,15 @@ export function EditorPane() {
   const resultado = useJogo((s) => s.resultado);
   const validando = useJogo((s) => s.validando);
   const atual = useJogo(etapaAtualEstavel);
+  const modelo = useJogo((s) => {
+    const a = etapaAtual(s);
+    return (a && !a.progresso.modoLivre && lacunasDa(a.etapa).find((l) => l.arquivo === s.arquivoAtivo)) || null;
+  });
+  const guiavel = useJogo((s) => {
+    const a = etapaAtual(s);
+    return !!a && lacunasDa(a.etapa).some((l) => l.arquivo === s.arquivoAtivo);
+  });
+  const alternarModoLivre = useJogo((s) => s.alternarModoLivre);
   const { abrirArquivo, fecharAba, editarArquivo, validar, executarArquivoDeDados, setAbaInferior } = useJogo.getState();
   const refs = useRef<{ editor: Parameters<OnMount>[0]; monaco: Monaco } | null>(null);
 
@@ -73,7 +100,7 @@ export function EditorPane() {
     );
   }
 
-  const podeValidar = atual !== null && atual !== 'DECISAO_ARQUITETURAL' && atual !== 'COMANDO_TERMINAL';
+  const podeValidar = atual !== null && /^(IMPLEMENTACAO|VALIDACAO)/.test(atual);
   const executar = () => {
     if (arquivoAtivo.endsWith('.py')) {
       setAbaInferior('terminal');
@@ -97,7 +124,12 @@ export function EditorPane() {
           ))}
         </div>
         <div className="flex shrink-0 items-center gap-2 px-2">
-          {executavel(arquivoAtivo) && (
+          {guiavel && (
+            <button onClick={alternarModoLivre} title={modelo ? `Dispensar as lacunas e escrever o código inteiro: +${BONUS_MODO_LIVRE} XP` : 'Voltar ao código com lacunas'} className="rounded border border-ambar/50 px-2.5 py-1 text-[12px] text-ambar hover:bg-ambar/10">
+              {modelo ? `✍ Escrever do zero (+${BONUS_MODO_LIVRE} XP)` : '🧩 Modo guiado'}
+            </button>
+          )}
+          {executavel(arquivoAtivo) && !modelo && (
             <button onClick={executar} title="Executa o arquivo aberto" className="rounded border border-borda px-2.5 py-1 text-[12px] text-texto hover:bg-realce">
               ▶ Executar
             </button>
@@ -114,6 +146,9 @@ export function EditorPane() {
       </div>
       <div className="px-3 py-1 font-mono text-[11px] text-suave">{arquivoAtivo.split('/').join(' › ')}</div>
       <div className="min-h-0 flex-1">
+        {modelo ? (
+          <ClozePane modelo={modelo} />
+        ) : (
         <Editor
           theme="devos"
           path={`${questAtivaId}/${arquivoAtivo}`}
@@ -139,6 +174,7 @@ export function EditorPane() {
             wordWrap: /\.(md|json)$/.test(arquivoAtivo) ? 'on' : 'off',
           }}
         />
+        )}
       </div>
     </div>
   );

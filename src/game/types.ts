@@ -35,6 +35,28 @@ interface EtapaBase {
   dicas?: string[];
 }
 
+/** Uma alternativa de uma lacuna, com a explicação do que aquela sintaxe faz. */
+export interface OpcaoLacuna {
+  texto: string;
+  explica: string;
+  correta: boolean;
+}
+
+/**
+ * Código com lacunas: `modelo` é o arquivo completo, com marcadores ⟦id⟧.
+ * O mesmo id pode aparecer mais de uma vez (todas as ocorrências recebem a mesma escolha).
+ */
+export interface Lacunas {
+  arquivo: string;
+  modelo: string;
+  slots: Record<string, OpcaoLacuna[]>;
+}
+
+/** Etapas que produzem código podem oferecer o modo guiado por lacunas. */
+interface ComLacunas {
+  lacunas?: Lacunas[];
+}
+
 export interface EtapaDecisao extends EtapaBase {
   tipo: 'DECISAO_ARQUITETURAL';
   opcoes: Opcao[];
@@ -58,7 +80,7 @@ export interface TestePython {
   codigo: string;
 }
 
-export interface EtapaCodigo extends EtapaBase {
+export interface EtapaCodigo extends EtapaBase, ComLacunas {
   tipo: 'IMPLEMENTACAO_CODIGO';
   arquivo: string;
   funcaoAlvo?: string;
@@ -76,7 +98,7 @@ export interface VerificacaoSQL {
   dica?: string;
 }
 
-export interface EtapaSQL extends EtapaBase {
+export interface EtapaSQL extends EtapaBase, ComLacunas {
   tipo: 'IMPLEMENTACAO_SQL';
   arquivo: string;
   setupSQL?: string;
@@ -94,7 +116,7 @@ export interface VerificacaoMongo {
   dica?: string;
 }
 
-export interface EtapaMongo extends EtapaBase {
+export interface EtapaMongo extends EtapaBase, ComLacunas {
   tipo: 'IMPLEMENTACAO_MONGO';
   arquivo: string;
   banco: string;
@@ -104,12 +126,29 @@ export interface EtapaMongo extends EtapaBase {
   regras?: Regra[];
 }
 
-export interface EtapaEstatica extends EtapaBase {
+export interface EtapaEstatica extends EtapaBase, ComLacunas {
   tipo: 'VALIDACAO_ESTATICA';
   regras: Regra[];
 }
 
-export type Etapa = EtapaDecisao | EtapaTerminal | EtapaCodigo | EtapaSQL | EtapaMongo | EtapaEstatica;
+/** Code review invertido: o jogador marca as linhas com problema no código de um colega. */
+export interface EtapaRevisao extends EtapaBase {
+  tipo: 'REVISAO_CODIGO';
+  autor: string;
+  linguagem: string;
+  codigo: string;
+  problemas: { linha: number; explica: string }[];
+}
+
+/** Simulador interativo de arquitetura (ver src/game/sim). */
+export interface EtapaSimulacao extends EtapaBase {
+  tipo: 'SIMULACAO';
+  simulador: 'balanceador' | 'blackfriday';
+}
+
+export type Etapa = EtapaDecisao | EtapaTerminal | EtapaCodigo | EtapaSQL | EtapaMongo | EtapaEstatica | EtapaRevisao | EtapaSimulacao;
+
+export type EtapaComLacunas = EtapaCodigo | EtapaSQL | EtapaMongo | EtapaEstatica;
 
 export interface Quest {
   _id: string;

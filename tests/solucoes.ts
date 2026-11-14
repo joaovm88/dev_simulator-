@@ -18,28 +18,13 @@ export const SOLUCOES: Record<string, Solucao> = {
     arquivos: {
       5: {
         'src/triagem.py': r`def classificar_paciente(idade: int, suspeita_infecto: bool) -> str:
-    if idade >= 65 and suspeita_infecto:
-        return "Sala Amarela - Prioridade"
-    elif idade >= 65:
-        return "Sala Branca - Prioridade"
-    elif suspeita_infecto:
-        return "Sala Amarela - Comum"
-    else:
-        return "Sala Branca - Comum"
-
-
-def contar_prioritarios(idades: list) -> int:
-    pass
-`,
-      },
-      6: {
-        'src/triagem.py': r`def classificar_paciente(idade: int, suspeita_infecto: bool) -> str:
     sala = "Sala Amarela" if suspeita_infecto else "Sala Branca"
     fila = "Prioridade" if idade >= 65 else "Comum"
     return f"{sala} - {fila}"
-
-
-def contar_prioritarios(idades: list) -> int:
+`,
+      },
+      6: {
+        'src/fila.py': r`def contar_prioritarios(idades: list) -> int:
     total = 0
     for idade in idades:
         if idade >= 65:
@@ -52,7 +37,7 @@ def contar_prioritarios(idades: list) -> int:
 
   quest_jr_02_inventario_acesso: {
     arquivos: {
-      2: {
+      3: {
         'src/Funcoes.py': r`def calcular_depreciacao(valor: float, anos: int, taxa: float) -> float:
     return round(valor * (1 - taxa) ** anos, 2)
 
@@ -61,7 +46,7 @@ def resumo_valores(valores: list) -> tuple:
     return max(valores), min(valores), sum(valores)
 `,
       },
-      3: {
+      4: {
         'src/inventario.py': r`from Funcoes import *
 
 
@@ -85,11 +70,7 @@ def valor_total_depreciado(ativos: list, anos: int, taxa: float) -> float:
   quest_jr_03_relatorios_json: {
     arquivos: {
       2: {
-        'src/relatorios.py': r`import json
-import os
-
-
-def registrar_log(caminho: str, mensagem: str) -> None:
+        'src/relatorios.py': r`def registrar_log(caminho: str, mensagem: str) -> None:
     with open(caminho, "a", encoding="utf-8") as f:
         f.write(mensagem + "\n")
 
@@ -104,36 +85,11 @@ def exportar_csv(ativos: list, caminho: str) -> None:
 def parse_linha(linha: str) -> dict:
     partes = linha.strip().split(";")
     return {"nome": partes[0], "valor": float(partes[1])}
-
-
-def salvar_json(ativos: list, caminho: str) -> None:
-    pass
-
-
-def carregar_json(caminho: str) -> list:
-    pass
 `,
       },
       4: {
-        'src/relatorios.py': r`import json
+        'src/persistencia.py': r`import json
 import os
-
-
-def registrar_log(caminho: str, mensagem: str) -> None:
-    with open(caminho, "a", encoding="utf-8") as f:
-        f.write(mensagem + "\n")
-
-
-def exportar_csv(ativos: list, caminho: str) -> None:
-    with open(caminho, "w", encoding="utf-8") as f:
-        f.write("nome;valor\n")
-        for ativo in ativos:
-            f.write(f"{ativo['nome']};{ativo['valor']}\n")
-
-
-def parse_linha(linha: str) -> dict:
-    partes = linha.strip().split(";")
-    return {"nome": partes[0], "valor": float(partes[1])}
 
 
 def salvar_json(ativos: list, caminho: str) -> None:
@@ -406,14 +362,14 @@ INSERT INTO funcionario (id_funcionario, nome, salario, id_departamento) VALUES 
 UPDATE funcionario SET salario = salario * 1.10 WHERE id_departamento = 1;
 `,
       },
-      3: {
+      4: {
         'sql/02_relatorio_join.sql': `SELECT f.nome, d.nome
 FROM funcionario f
 INNER JOIN departamento d ON f.id_departamento = d.id_departamento
 ORDER BY f.salario DESC;
 `,
       },
-      4: {
+      5: {
         'sql/03_departamentos_orfaos.sql': `SELECT d.nome
 FROM departamento d
 LEFT JOIN funcionario f ON f.id_departamento = d.id_departamento
@@ -421,7 +377,7 @@ WHERE f.id_funcionario IS NULL;
 `,
       },
     },
-    comandos: { 5: GIT },
+    comandos: { 6: GIT },
   },
 
   quest_pl_05_mongodb: {
@@ -501,7 +457,7 @@ export function ContaCard({ conta }: { conta: ContaDTO }) {
 
   quest_sr_01_microsservicos: {
     arquivos: {
-      3: {
+      4: {
         'gateway/balanceador.py': r`class BalanceadorRoundRobin:
     def __init__(self):
         self.instancias = []
@@ -523,7 +479,7 @@ export function ContaCard({ conta }: { conta: ContaDTO }) {
         return porta
 `,
       },
-      4: {
+      5: {
         'servicos/entregas.py': r`FLUXO = ["EM_SEPARACAO", "EM_TRANSPORTE", "ENTREGUE"]
 
 
@@ -535,7 +491,7 @@ def avancar_status(status_atual: str) -> str:
 `,
       },
     },
-    comandos: { 5: GIT },
+    comandos: { 6: GIT },
   },
 
   quest_sr_02_replica_sets: {
@@ -560,7 +516,7 @@ def avancar_status(status_atual: str) -> str:
 
   quest_sr_03_docker_kubernetes: {
     arquivos: {
-      2: {
+      3: {
         Dockerfile: `FROM python:3.12-slim
 
 WORKDIR /app
@@ -574,7 +530,7 @@ EXPOSE 8000
 CMD ["python", "main.py"]
 `,
       },
-      4: {
+      5: {
         'k8s/deployment.yaml': `apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -598,12 +554,12 @@ spec:
       },
     },
     comandos: {
-      3: [
+      4: [
         'docker build -t nexustech/pedidos:1.0 .',
         'docker run -d -p 8000:8000 -e DB_PASSWORD=segredo --name pedidos nexustech/pedidos:1.0',
         'docker push nexustech/pedidos:1.0',
       ],
-      5: ['kubectl apply -f k8s/deployment.yaml', 'kubectl get pods', ...GIT],
+      6: ['kubectl apply -f k8s/deployment.yaml', 'kubectl get pods', ...GIT],
     },
   },
 
@@ -629,6 +585,6 @@ def custo_fixo(rps_por_hora: list, capacidade_por_instancia: float, preco_hora: 
 `,
       },
     },
-    comandos: { 6: GIT },
+    comandos: { 7: GIT },
   },
 };

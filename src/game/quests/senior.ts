@@ -119,11 +119,24 @@ def avancar_status(status_atual: str) -> str:
       },
       {
         ordem: 3,
+        tipo: 'SIMULACAO',
+        simulador: 'balanceador',
+        titulo: 'Teste de carga no API Gateway',
+        mensagemIA:
+          'Hora de provar a arquitetura. Na **Sala de Guerra** (painel central) há um teste de carga contra o gateway — e, no meio dele, a instância **58817 vai cair**.\n\nConfigure o gateway e rode o teste. Meta: **99% de disponibilidade**, mesmo com a queda. Pode rodar quantas vezes quiser: observe para onde vão as requisições que falham.',
+        dicas: [
+          'Com endereço fixo, tudo depende de uma instância só. Comece distribuindo a carga.',
+          'Depois que a instância cai, quem avisa o gateway? Sem heartbeat, ele continua mandando tráfego para ela.',
+          'O heartbeat leva alguns ciclos para detectar a queda. O que o gateway pode fazer com uma requisição que falhou nesse intervalo?',
+        ],
+      },
+      {
+        ordem: 4,
         tipo: 'IMPLEMENTACAO_CODIGO',
         titulo: 'Balanceador Round-Robin',
         arquivo: 'gateway/balanceador.py',
         mensagemIA:
-          'Vamos prototipar o coração do gateway. Implemente a classe `BalanceadorRoundRobin` em `gateway/balanceador.py`:\n\n• `registrar(porta)` — a instância entrou no registro\n• `remover(porta)` — a instância caiu\n• `proxima()` — devolve a próxima porta em rodízio\n\nNo teste de carga eu vou **derrubar a instância 58817** no meio do tráfego: o balanceador deve redirecionar tudo para 58370 e 58892 sem que o usuário final perceba.',
+          'Você viu o Round-Robin funcionando no simulador; agora vamos prototipar esse coração do gateway. Implemente a classe `BalanceadorRoundRobin` em `gateway/balanceador.py`:\n\n• `registrar(porta)` — a instância entrou no registro\n• `remover(porta)` — a instância caiu\n• `proxima()` — devolve a próxima porta em rodízio\n\nNo teste de carga eu vou **derrubar a instância 58817** no meio do tráfego: o balanceador deve redirecionar tudo para 58370 e 58892 sem que o usuário final perceba.',
         testes: [
           {
             nome: 'Rodízio na ordem de registro',
@@ -180,7 +193,7 @@ else:
         ],
       },
       {
-        ordem: 4,
+        ordem: 5,
         tipo: 'IMPLEMENTACAO_CODIGO',
         titulo: 'Comunicação entre serviços',
         arquivo: 'servicos/entregas.py',
@@ -210,7 +223,7 @@ for invalido in ("ENTREGUE", "CANCELADO", ""):
           'Se `i` for a última posição (`len(FLUXO) - 1`), faça `raise ValueError("Pedido já entregue")`; senão `return FLUXO[i + 1]`.',
         ],
       },
-      entregaGit(5),
+      entregaGit(6),
     ],
   },
 
@@ -507,10 +520,35 @@ spec:
       },
       {
         ordem: 2,
-        tipo: 'VALIDACAO_ESTATICA',
-        titulo: 'Code Review do Dockerfile',
+        tipo: 'REVISAO_CODIGO',
+        titulo: 'Ache os 3 problemas do Dockerfile',
+        autor: 'Dockerfile atual do serviço de pedidos',
+        linguagem: 'dockerfile',
         mensagemIA:
-          'Analisei o `Dockerfile` e encontrei três problemas:\n\n**1. Imagem pesada** — `python:3.12` tem mais de 1 GB. Use a variante `python:3.12-slim`.\n\n**2. Cache de camadas** — cada instrução vira uma camada, e mudou uma, refaz todas as seguintes. Com `COPY . .` antes do `pip install`, qualquer alteração de código reinstala tudo. Copie primeiro só o `requirements.txt`, rode o `pip install` e só depois copie o resto.\n\n**3. Senha embutida** — `ENV DB_PASSWORD=...` grava a senha na imagem: quem fizer `docker pull` consegue ler. Remova: ela será injetada na execução com `docker run -e`.\n\nAproveite e documente a porta com `EXPOSE 8000`.',
+          'O Marcos disse que o Dockerfile foi feito às pressas. Antes de eu te contar o que há de errado, quero ver o seu olho clínico: **marque as 3 linhas problemáticas** e clique em **Enviar revisão**.\n\nDica de ouro: abra a aba **Contêineres** (painel de baixo) para ver o tamanho e o cache de cada camada.',
+        codigo: `FROM python:3.12
+
+WORKDIR /app
+
+COPY . .
+RUN pip install -r requirements.txt
+
+ENV DB_PASSWORD=nexus@2025
+
+CMD ["python", "main.py"]`,
+        problemas: [
+          { linha: 1, explica: '`python:3.12` é a imagem completa, com mais de 1 GB de ferramentas que o serviço não usa. A variante `-slim` tem cerca de 130 MB.' },
+          { linha: 5, explica: '`COPY . .` antes do `pip install`: qualquer alteração de código invalida o cache desta camada e de todas as seguintes, reinstalando as dependências a cada build.' },
+          { linha: 8, explica: '`ENV DB_PASSWORD=...` grava a senha dentro da imagem. Quem fizer `docker pull` consegue ler com `docker history`.' },
+        ],
+        dicas: ['Pense em três eixos: tamanho da imagem, tempo de rebuild e segurança.', 'Cada instrução vira uma camada. Mudou uma camada, todas as seguintes são refeitas: a ordem importa.'],
+      },
+      {
+        ordem: 3,
+        tipo: 'VALIDACAO_ESTATICA',
+        titulo: 'Corrigir o Dockerfile',
+        mensagemIA:
+          'Bom olho! Recapitulando os três problemas:\n\n**1. Imagem pesada** — `python:3.12` tem mais de 1 GB. Use a variante `python:3.12-slim`.\n\n**2. Cache de camadas** — cada instrução vira uma camada, e mudou uma, refaz todas as seguintes. Com `COPY . .` antes do `pip install`, qualquer alteração de código reinstala tudo. Copie primeiro só o `requirements.txt`, rode o `pip install` e só depois copie o resto.\n\n**3. Senha embutida** — `ENV DB_PASSWORD=...` grava a senha na imagem: quem fizer `docker pull` consegue ler. Remova: ela será injetada na execução com `docker run -e`.\n\nAproveite e documente a porta com `EXPOSE 8000`.',
         regras: [
           { nome: 'Imagem base leve (slim ou alpine)', arquivo: 'Dockerfile', padrao: '^FROM\\s+python:[\\w.]+-(slim|alpine)', flags: 'mi', dica: 'Troque a base para `FROM python:3.12-slim`.' },
           { nome: 'Define o diretório de trabalho', arquivo: 'Dockerfile', padrao: '^WORKDIR\\s+/\\w+', flags: 'mi', dica: 'Mantenha `WORKDIR /app`.' },
@@ -524,7 +562,7 @@ spec:
         ],
       },
       {
-        ordem: 3,
+        ordem: 4,
         tipo: 'COMANDO_TERMINAL',
         titulo: 'Construir, executar e publicar',
         mensagemIA:
@@ -537,7 +575,7 @@ spec:
         dicas: ['O ponto final do `docker build` é o contexto: a pasta atual, onde está o Dockerfile.', 'A flag `-e NOME=valor` define a variável de ambiente só naquele contêiner — a imagem publicada continua sem a senha.'],
       },
       {
-        ordem: 4,
+        ordem: 5,
         tipo: 'VALIDACAO_ESTATICA',
         titulo: 'Deployment no Kubernetes',
         mensagemIA:
@@ -553,11 +591,11 @@ spec:
         ],
       },
       {
-        ordem: 5,
+        ordem: 6,
         tipo: 'COMANDO_TERMINAL',
         titulo: 'Aplicar no cluster e entregar',
         mensagemIA:
-          'Aplique o manifesto e veja o orquestrador trabalhar:\n\n1. `kubectl apply -f k8s/deployment.yaml`\n2. `kubectl get pods`\n\nDepois faça a entrega: `git add .`, `git commit -m "..."`, `git push`.',
+          'Aplique o manifesto e veja o orquestrador trabalhar:\n\n1. `kubectl apply -f k8s/deployment.yaml`\n2. `kubectl get pods`\n\nDepois abra a aba **Contêineres** e **derrube um pod** com um clique: o Kubernetes sobe outro sozinho para manter as 3 réplicas.\n\nPor fim, faça a entrega: `git add .`, `git commit -m "..."`, `git push`.',
         comandos: [
           { padrao: '^kubectl apply -f k8s/deployment\\.yaml', descricao: 'kubectl apply -f k8s/deployment.yaml' },
           { padrao: '^kubectl get pods?', descricao: 'kubectl get pods' },
@@ -745,6 +783,19 @@ assert fixo == 600.0, f"Custo fixo do dia deveria ser 600.0, veio {fixo!r}."`,
       },
       {
         ordem: 5,
+        tipo: 'SIMULACAO',
+        simulador: 'blackfriday',
+        titulo: 'Black Friday ao vivo',
+        mensagemIA:
+          'Os cálculos estão prontos; agora é para valer. Na **Sala de Guerra** você vai operar as 24 horas da Black Friday.\n\nDefina a estratégia de capacidade e rode o dia. Metas da Helena: **disponibilidade de 99,9%** e custo dentro do **orçamento de R$ 600**. Atenção: de madrugada, uma instância vai falhar.',
+        dicas: [
+          'Servidores fixos têm um dilema: poucos não aguentam o pico; muitos ficam ociosos (e caros) por 18 horas.',
+          'No modo elástico, o máximo precisa cobrir o pico: 5.000 req/s ÷ 100 req/s por instância.',
+          'O mínimo protege contra a falha da madrugada: com 1 instância só, quando ela cai não sobra ninguém. Mas mínimo alto demais estoura o orçamento.',
+        ],
+      },
+      {
+        ordem: 6,
         tipo: 'DECISAO_ARQUITETURAL',
         titulo: 'IA Generativa no atendimento',
         mensagemIA:
@@ -771,7 +822,7 @@ assert fixo == 600.0, f"Custo fixo do dia deveria ser 600.0, veio {fixo!r}."`,
           },
         ],
       },
-      entregaGit(6, 'Este é o deploy global da plataforma. '),
+      entregaGit(7, 'Este é o deploy global da plataforma. '),
     ],
   },
 ];

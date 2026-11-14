@@ -621,6 +621,32 @@ assert Contador.acessos <= 40, f"Foram {Contador.acessos} acessos à lista de 1.
       },
       {
         ordem: 2,
+        tipo: 'REVISAO_CODIGO',
+        titulo: 'Code review: PR do estagiário',
+        autor: 'lucas.estagio@nexustech.dev · PR #42 “ajustes de fim de mês”',
+        linguagem: 'sql',
+        mensagemIA:
+          'Chegou um pull request para você revisar antes de rodar em produção. Agora você é quem protege o banco do cliente. **Marque as 3 linhas perigosas ou erradas** e clique em **Enviar revisão**.',
+        codigo: `UPDATE funcionario SET salario = salario * 1.05;
+
+SELECT nome FROM funcionario WHERE id_departamento = NULL;
+
+DELETE FROM projeto;
+
+SELECT nome, salario FROM funcionario WHERE salario > 5000 ORDER BY salario DESC;
+
+INSERT INTO departamento (id_departamento, nome) VALUES (4, 'Financeiro');
+
+COMMIT;`,
+        problemas: [
+          { linha: 1, explica: '`UPDATE` sem `WHERE`: daria 5% de aumento para a empresa inteira. Foi exatamente o acidente que o cliente relatou no sistema antigo.' },
+          { linha: 3, explica: 'Nada é “igual” a NULL: `= NULL` nunca é verdadeiro e a consulta volta vazia. O teste correto é `IS NULL`.' },
+          { linha: 5, explica: '`DELETE` sem `WHERE` apaga todos os projetos. Antes do `COMMIT` ainda daria para desfazer com `ROLLBACK` — mas o script confirma tudo na última linha.' },
+        ],
+        dicas: ['Procure comandos DML que afetam a tabela inteira por falta de filtro.', 'Como se testa se uma coluna está vazia em SQL? Com `=` ou com `IS`?'],
+      },
+      {
+        ordem: 3,
         tipo: 'DECISAO_ARQUITETURAL',
         titulo: 'Qual JOIN?',
         mensagemIA:
@@ -648,7 +674,7 @@ assert Contador.acessos <= 40, f"Foram {Contador.acessos} acessos à lista de 1.
         ],
       },
       {
-        ordem: 3,
+        ordem: 4,
         tipo: 'IMPLEMENTACAO_SQL',
         titulo: 'Relatório com INNER JOIN',
         arquivo: 'sql/02_relatorio_join.sql',
@@ -672,7 +698,7 @@ assert Contador.acessos <= 40, f"Foram {Contador.acessos} acessos à lista de 1.
         ],
       },
       {
-        ordem: 4,
+        ordem: 5,
         tipo: 'IMPLEMENTACAO_SQL',
         titulo: 'Registros órfãos com LEFT JOIN',
         arquivo: 'sql/03_departamentos_orfaos.sql',
@@ -688,7 +714,7 @@ assert Contador.acessos <= 40, f"Foram {Contador.acessos} acessos à lista de 1.
           'SELECT d.nome\nFROM departamento d\nLEFT JOIN funcionario f ON f.id_departamento = d.id_departamento\nWHERE f.id_funcionario IS NULL;',
         ],
       },
-      entregaGit(5),
+      entregaGit(6),
     ],
   },
 

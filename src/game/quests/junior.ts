@@ -25,9 +25,12 @@ export const JUNIOR: Quest[] = [
         conteudo: py`def classificar_paciente(idade: int, suspeita_infecto: bool) -> str:
     # TODO: Implemente a lógica de decisão abaixo
     pass
-
-
-def contar_prioritarios(idades: list) -> int:
+`,
+      },
+      {
+        caminho: 'src/fila.py',
+        linguagem: 'python',
+        conteudo: py`def contar_prioritarios(idades: list) -> int:
     # TODO: percorra a lista e conte quantos pacientes têm 65 anos ou mais
     pass
 `,
@@ -137,7 +140,7 @@ def contar_prioritarios(idades: list) -> int:
         arquivo: 'src/triagem.py',
         funcaoAlvo: 'classificar_paciente',
         mensagemIA:
-          'Agora implemente `classificar_paciente(idade, suspeita_infecto)` no editor. O retorno é um texto no formato `"<Sala> - <Fila>"`:\n\n• Sala: `Sala Amarela` (com suspeita) ou `Sala Branca` (sem)\n• Fila: `Prioridade` (65 anos ou mais) ou `Comum`\n\nLembre-se dos dois pontos (`:`) após cada condição e da indentação de 4 espaços! Quando terminar, clique em **Rodar testes**.',
+          'Agora implemente `classificar_paciente(idade, suspeita_infecto)` no editor. O retorno é um texto no formato `"<Sala> - <Fila>"`:\n\n• Sala: `Sala Amarela` (com suspeita) ou `Sala Branca` (sem)\n• Fila: `Prioridade` (65 anos ou mais) ou `Comum`\n\nLembre-se dos dois pontos (`:`) após cada condição e da indentação de 4 espaços! Clique em cada lacuna para ver o que cada opção faz e depois em **Rodar testes**.',
         casosDeTeste: [
           { input: [70, true], outputEsperado: 'Sala Amarela - Prioridade' },
           { input: [70, false], outputEsperado: 'Sala Branca - Prioridade' },
@@ -156,10 +159,10 @@ def contar_prioritarios(idades: list) -> int:
         ordem: 6,
         tipo: 'IMPLEMENTACAO_CODIGO',
         titulo: 'Laço de repetição',
-        arquivo: 'src/triagem.py',
+        arquivo: 'src/fila.py',
         funcaoAlvo: 'contar_prioritarios',
         mensagemIA:
-          'A recepção quer saber quantos pacientes prioritários há na fila. Implemente `contar_prioritarios(idades)`: receba uma lista de idades e devolva quantas são 65 ou mais.\n\nAqui sim cabe um laço: use `for idade in idades:` com um contador.',
+          'A recepção quer saber quantos pacientes prioritários há na fila. Em `src/fila.py`, implemente `contar_prioritarios(idades)`: receba uma lista de idades e devolva quantas são 65 ou mais.\n\nAqui sim cabe um laço: use `for idade in idades:` com um contador.',
         casosDeTeste: [
           { input: [[70, 30, 65, 12]], outputEsperado: 2 },
           { input: [[]], outputEsperado: 0 },
@@ -258,6 +261,37 @@ def valor_total_depreciado(ativos: list, anos: int, taxa: float) -> float:
       },
       {
         ordem: 2,
+        tipo: 'REVISAO_CODIGO',
+        titulo: 'Ache os bugs do sistema antigo',
+        autor: 'sistema legado da Infra',
+        linguagem: 'python',
+        mensagemIA:
+          'Antes de reescrever, vamos ler o código antigo — todo dev passa mais tempo lendo do que escrevendo código. Este é o trecho do controle de acesso atual. **Clique nas 2 linhas que têm bug** e depois em **Enviar revisão**.',
+        codigo: py`usuarios = {}
+
+
+def cadastrar(login, nome):
+    usuarios[login] = nome
+    return True
+
+
+def buscar(login):
+    if login in usuarios:
+        return usuarios[login]
+    return None
+
+
+idade = input("Idade do funcionário: ")
+if idade >= 18:
+    print("Acesso liberado ao datacenter")`,
+        problemas: [
+          { linha: 5, explica: 'A atribuição `usuarios[login] = nome` grava sem checar se a chave já existe: o segundo cadastro com o mesmo login sobrescreve o primeiro em silêncio. É o bug que a Paula relatou.' },
+          { linha: 16, explica: '`input()` devolve `str`. Comparar `str >= int` lança `TypeError` — faltou converter com `int(input(...))`.' },
+        ],
+        dicas: ['Um dos bugs é o que a Paula descreveu no e-mail: o que acontece quando o login já existe no dicionário?', 'O outro é a pegadinha da missão anterior: qual é o tipo do valor devolvido por `input()`?'],
+      },
+      {
+        ordem: 3,
         tipo: 'IMPLEMENTACAO_CODIGO',
         titulo: 'Módulo Funcoes.py',
         arquivo: 'src/Funcoes.py',
@@ -291,7 +325,7 @@ assert r == (50, 10, 80), f"Esperado (50, 10, 80), veio {r!r}."`,
         ],
       },
       {
-        ordem: 3,
+        ordem: 4,
         tipo: 'IMPLEMENTACAO_CODIGO',
         titulo: 'Corrigir o cadastro e usar o módulo',
         arquivo: 'src/inventario.py',
@@ -355,11 +389,7 @@ assert m.valor_total_depreciado([], 3, 0.5) == 0, "Lista vazia deve somar 0."`,
       {
         caminho: 'src/relatorios.py',
         linguagem: 'python',
-        conteudo: py`import json
-import os
-
-
-def registrar_log(caminho: str, mensagem: str) -> None:
+        conteudo: py`def registrar_log(caminho: str, mensagem: str) -> None:
     # TODO: acrescente a mensagem ao final do arquivo, uma por linha
     pass
 
@@ -373,6 +403,13 @@ def exportar_csv(ativos: list, caminho: str) -> None:
 def parse_linha(linha: str) -> dict:
     # TODO: transforme "Switch;1000.0" em {"nome": "Switch", "valor": 1000.0}
     pass
+`,
+      },
+      {
+        caminho: 'src/persistencia.py',
+        linguagem: 'python',
+        conteudo: py`import json
+import os
 
 
 def salvar_json(ativos: list, caminho: str) -> None:
@@ -495,14 +532,14 @@ assert r == {"nome": "Notebook", "valor": 3500.5}, f"Esperado {{'nome': 'Noteboo
         ordem: 4,
         tipo: 'IMPLEMENTACAO_CODIGO',
         titulo: 'Persistência em JSON',
-        arquivo: 'src/relatorios.py',
+        arquivo: 'src/persistencia.py',
         mensagemIA:
-          'Última parte: implemente `salvar_json(ativos, caminho)` e `carregar_json(caminho)`.\n\nAtenção ao primeiro uso do sistema: se o arquivo ainda não existe, `carregar_json` deve devolver uma lista vazia em vez de quebrar com `FileNotFoundError`.',
+          'Última parte, em `src/persistencia.py`: implemente `salvar_json(ativos, caminho)` e `carregar_json(caminho)`.\n\nAtenção ao primeiro uso do sistema: se o arquivo ainda não existe, `carregar_json` deve devolver uma lista vazia em vez de quebrar com `FileNotFoundError`.',
         testes: [
           {
             nome: 'salvar_json grava JSON válido',
             codigo: py`import json
-m = carregar("src/relatorios.py")
+m = carregar("src/persistencia.py")
 ativos = [{"nome": "Switch", "valor": 1000.0}]
 m.salvar_json(ativos, "inventario.json")
 with open("inventario.json", encoding="utf-8") as f:
@@ -515,7 +552,7 @@ assert lido == ativos, f"O conteúdo gravado difere do original: {lido!r}"`,
           },
           {
             nome: 'carregar_json devolve o que foi salvo',
-            codigo: py`m = carregar("src/relatorios.py")
+            codigo: py`m = carregar("src/persistencia.py")
 ativos = [{"nome": "Switch", "valor": 1000.0}, {"nome": "Câmera", "valor": 250.75}]
 m.salvar_json(ativos, "inventario.json")
 r = m.carregar_json("inventario.json")
@@ -523,7 +560,7 @@ assert r == ativos, f"Esperado {ativos!r}, veio {r!r}."`,
           },
           {
             nome: 'carregar_json devolve [] quando o arquivo não existe',
-            codigo: py`m = carregar("src/relatorios.py")
+            codigo: py`m = carregar("src/persistencia.py")
 r = m.carregar_json("nao_existe.json")
 assert r == [], f"Sem arquivo, o retorno deve ser [] (veio {r!r})."`,
           },
